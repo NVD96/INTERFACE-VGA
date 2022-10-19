@@ -1,1 +1,2 @@
 http://people.ece.cornell.edu/land/courses/ece4760/
+https://web.stanford.edu/class/cs140/projects/pintos/specs/freevga/vga/vgamem.htm
