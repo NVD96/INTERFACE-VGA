@@ -1,0 +1,297 @@
+/**************************************************************************
+  Interfacing PIC18F46K22 microcontroller with VGA monitor (160x64 pixel).
+  Graphics test example.
+  C Code for CCS C compiler.
+  This is a free software with NO WARRANTY.
+  https://simple-circuit.com/
+
+/**************************************************************************
+  Original code by Adafruit Industries
+  ------> http://www.adafruit.com/
+
+**************************************************************************/
+
+// uncomment only one of the following if you want to use higher height pixel (default if 64)
+//#define VGAHEIGHT_96
+//#define VGAHEIGHT_128
+//#define VGAHEIGHT_160
+
+// uncomment this line if you want to use VSYNC pin other than RC0 (for example RB2)
+//#define VSYNCPIN PIN_B2
+
+#include <18F46K22.h>
+#fuses  NOMCLR, NOLVP, NOBROWNOUT, PUT, NOXINST
+#use delay(internal = 64MHz)
+#use fast_io(c)
+#use fast_io(d)
+#include <VGA.c>          // include VGA driver source code
+#include <GFX_Library.c>  // include graphics library source code
+// define random max number
+#define RAND_MAX  (display_width - 1)
+// include std library source code (required by rand() function)
+#include <stdlib.h>
+
+
+#define NUMFLAKES 10
+#define XPOS 0
+#define YPOS 1
+#define DELTAY 2
+
+#define LOGO16_GLCD_HEIGHT 16 
+#define LOGO16_GLCD_WIDTH  16 
+rom char logo16_glcd_bmp[] =
+{ 0b00000000, 0b11000000,
+  0b00000001, 0b11000000,
+  0b00000001, 0b11000000,
+  0b00000011, 0b11100000,
+  0b11110011, 0b11100000,
+  0b11111110, 0b11111000,
+  0b01111110, 0b11111111,
+  0b00110011, 0b10011111,
+  0b00011111, 0b11111100,
+  0b00001101, 0b01110000,
+  0b00011011, 0b10100000,
+  0b00111111, 0b11100000,
+  0b00111111, 0b11110000,
+  0b01111100, 0b11110000,
+  0b01110000, 0b01110000,
+  0b00000000, 0b00110000 };
+
+
+void testdrawbitmap(rom uint8_t *bitmap, uint8_t w, uint8_t h) {
+  static uint8_t icons[NUMFLAKES][3], f, x_pos, y_pos;
+
+  // initialize
+  for (f=0; f< NUMFLAKES; f++) {
+    icons[f][XPOS] = rand();
+    icons[f][YPOS] = 0;
+    icons[f][DELTAY] = (rand() % 5) + 1;
+  }
+  icons[0][XPOS] = 30;
+
+  while (TRUE) {
+    uint8_t f;
+    // draw each icon
+    for (f=0; f< NUMFLAKES; f++) {
+      x_pos = icons[f][XPOS];
+      y_pos = icons[f][YPOS];
+      display_drawBitmapV2(x_pos, y_pos, bitmap, w, h, WHITE);
+    }
+    delay_ms(200);
+
+    // then erase it + move it
+    for (f=0; f< NUMFLAKES; f++) {
+      x_pos = icons[f][XPOS];
+      y_pos = icons[f][YPOS];
+      display_drawBitmapV2(x_pos, y_pos, bitmap, w, h, BLACK);
+      // move it
+      icons[f][YPOS] += icons[f][DELTAY];
+      // if its gone, reinit
+      if (icons[f][YPOS] > display_height) {
+        icons[f][XPOS] = rand();
+        icons[f][YPOS] = 0;
+        icons[f][DELTAY] = (rand() % 5) + 1;
+      }
+    }
+   }
+}
+
+void testdrawchar(void) {
+  display_setTextSize(1);
+  display_setTextColor(WHITE);
+  display_setCursor(0, 0);
+
+  for (uint8_t i=0; i < 168; i++) {
+    if (i == '\n' || i == '\r') continue;
+    display_print(i);
+  }
+}
+
+void testdrawcircle(void) {
+  for (int16_t i=0; i<display_height; i+=2) {
+    display_drawCircle(display_width/2, display_height/2, i, WHITE);
+  }
+}
+
+void testfillrect(void) {
+  uint8_t color = 1;
+  for (int16_t i=0; i<display_height/2; i+=3) {
+    // alternate colors
+    display_fillRect(i, i, display_width-i*2, display_height-i*2, color%2);
+    color++;
+  }
+}
+
+void testdrawtriangle(void) {
+  for (int16_t i=0; i<min(display_width,display_height)/2; i+=5) {
+    display_drawTriangle(display_width/2, display_height/2-i,
+                     display_width/2-i, display_height/2+i,
+                     display_width/2+i, display_height/2+i, WHITE);
+  }
+}
+
+void testfilltriangle(void) {
+  uint8_t color = WHITE;
+  for (int16_t i=min(display_width,display_height)/2; i>0; i-=5) {
+    display_fillTriangle(display_width/2, display_height/2-i,
+                     display_width/2-i, display_height/2+i,
+                     display_width/2+i, display_height/2+i, color);
+    if (color == BLACK) color = WHITE;
+    else color = BLACK;
+  }
+}
+
+void testdrawroundrect(void) {
+  for (int16_t i=0; i<display_height/2-2; i+=2) {
+    display_drawRoundRect(i, i, display_width-2*i, display_height-2*i, display_height/4, WHITE);
+  }
+}
+
+void testfillroundrect(void) {
+  uint8_t color = WHITE;
+  for (int16_t i=0; i<display_height/2-2; i+=2) {
+    display_fillRoundRect(i, i, display_width-2*i, display_height-2*i, display_height/4, color);
+    if (color == BLACK) color = WHITE;
+    else color = BLACK;
+  }
+}
+   
+void testdrawrect(void) {
+  for (int16_t i=0; i<display_height/2; i+=2) {
+    display_drawRect(i, i, display_width-2*i, display_height-2*i, WHITE);
+  }
+}
+
+void testdrawline() {  
+  int16_t i;
+  for (i=0; i<display_width; i+=4) {
+    display_drawLine(0, 0, i, display_height-1, WHITE);
+  }
+  for (i=0; i<display_height; i+=4) {
+    display_drawLine(0, 0, display_width-1, i, WHITE);
+  }
+  delay_ms(250);
+  
+  display_clear();
+  for (i=0; i<display_width; i+=4) {
+    display_drawLine(0, display_height-1, i, 0, WHITE);
+  }
+  for (i=display_height-1; i>=0; i-=4) {
+    display_drawLine(0, display_height-1, display_width-1, i, WHITE);
+  }
+  delay_ms(250);
+  
+  display_clear();
+  for (i=display_width-1; i>=0; i-=4) {
+    display_drawLine(display_width-1, display_height-1, i, 0, WHITE);
+  }
+  for (i=display_height-1; i>=0; i-=4) {
+    display_drawLine(display_width-1, display_height-1, 0, i, WHITE);
+  }
+  delay_ms(250);
+
+  display_clear();
+  for (i=0; i<display_height; i+=4) {
+    display_drawLine(display_width-1, 0, 0, i, WHITE);
+  }
+  for (i=0; i<display_width; i+=4) {
+    display_drawLine(display_width-1, 0, i, display_height-1, WHITE);
+  }
+  delay_ms(250);
+}
+
+// main function
+void main(void) {
+
+  VGA_begin();      // VGA init
+  delay_ms(10000);  // wait 10 seconds
+
+  display_clear();  // clears the screen and buffer
+
+  // draw a single pixel
+  display_drawPixel(10, 10, WHITE);
+  delay_ms(2000);
+  display_clear();
+
+  // draw many lines
+  testdrawline();
+  delay_ms(2000);
+  display_clear();
+
+  // draw rectangles
+  testdrawrect();
+  delay_ms(2000);
+  display_clear();
+
+  // draw multiple rectangles
+  testfillrect();
+  delay_ms(2000);
+  display_clear();
+
+  // draw mulitple circles
+  testdrawcircle();
+  delay_ms(2000);
+  display_clear();
+
+  // draw a circle, 10 pixel radius
+  display_fillCircle(display_width/2, display_height/2, 10, WHITE);
+  delay_ms(2000);
+  display_clear();
+
+  testdrawroundrect();
+  delay_ms(2000);
+  display_clear();
+
+  testfillroundrect();
+  delay_ms(2000);
+  display_clear();
+
+  testdrawtriangle();
+  delay_ms(2000);
+  display_clear();
+   
+  testfilltriangle();
+  delay_ms(2000);
+  display_clear();
+
+  // draw the first ~12 characters in the font
+  testdrawchar();
+  delay_ms(2000);
+  display_clear();
+
+  // text display tests
+  display_setTextSize(1);
+  display_setTextColor(WHITE);
+  display_setCursor(0, 0);
+  display_print("Hello, world!\r\n");
+  display_setTextColor(BLACK, WHITE); // 'inverted' text
+  printf(display_print, "%f\r\n", 3.141592);
+  display_setTextSize(2);
+  display_setTextColor(WHITE);
+  printf(display_print, "0x%LX\r\n", 0xDEADBEEF);
+  delay_ms(2000);
+
+  // rotation example
+  display_clear();
+  display_setRotation(1);  // rotate 90 degrees counter clockwise, can also use values of 2 and 3 to go further.
+  display_setTextSize(1);
+  display_setTextColor(WHITE);
+  display_setCursor(0, 0);
+  display_print("Rotation\r\n");
+  display_setTextSize(2);
+  display_print("Example!\r\n");
+  delay_ms(2000);
+
+  // revert back to no rotation
+  display_setRotation(0);
+
+  // miniature bitmap display
+  display_clear();
+  display_drawBitmapV2(30, 16,  logo16_glcd_bmp, 16, 16, WHITE);
+
+  // draw a bitmap icon and 'animate' movement
+  testdrawbitmap(logo16_glcd_bmp, LOGO16_GLCD_WIDTH, LOGO16_GLCD_HEIGHT);
+
+}
+
+// end of code.
