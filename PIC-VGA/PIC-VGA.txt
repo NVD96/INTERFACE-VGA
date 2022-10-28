@@ -1,0 +1,315 @@
+void VGA_begin() {
+  output_drive(VSYNCPIN);   // configure VSYNCPIN as output
+  output_drive(HSYNCPIN);   // configure HSYNCPIN as output
+  output_drive(DATAPIN);    // configure DATAPIN as output
+
+  // CCP1 configuration (HSYNC pulses generator), with MCU freq = 64MHz (16 MIPS)
+  // Timer2 prescaler = 1:4, postoscaler = 1:1, PR2 = 126
+  // ==> period = 31.75us and freq = 31.496kHz
+  // ==> max PWM duty cycle = 507 (resolution = 8.988)
+  setup_timer_2(T2_DIV_BY_4, 126, 1);
+  SETUP_CCP1(CCP_PWM);  // configure CCP1 module as PWM
+  // set PWM1 duty cycle ( ==> ON time = 27.992us, OFF time = 3.757us)
+  set_pwm1_duty(447);
+  enable_interrupts(GLOBAL);      // enable global interrupts
+  // enable Timer2 interrupt (interrupt on TMR2 match with PR2 ==> every 31.75us)
+  enable_interrupts(INT_TIMER2);
+
+  rotation = 0;
+  _width  = VGAWIDTH;
+  _height = VGAHEIGHT;
+}
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+void drawPixel(uint8_t x, uint8_t y, bool color) {
+
+  if ( (x >= _width) || (y >= _height) )
+    return;
+
+  switch(rotation) {
+    case 1:
+      vga_swap(x, y);
+      y =  VGAHEIGHT - 1 - y;
+      break;
+    case 2:
+      x = VGAWIDTH - 1 - x;
+      y = VGAHEIGHT - 1 - y;
+      break;
+    case 3:
+      vga_swap(x, y);
+      x = VGAWIDTH - 1 - x;
+  }
+
+  if ( (x >= VGAWIDTH) || (y >= VGAHEIGHT) )
+    return;
+
+  if (color)
+    vga_buffer[(uint16_t)y * 20 + (x/8)] |=  ( 1 << (7-(x & 7)) );  // set pixel
+
+  else
+    vga_buffer[(uint16_t)y * 20 + (x/8)] &= ~( 1 << (7-(x & 7)) );  // clear pixel
+}
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+void display_clear(void) {
+  for (uint16_t i = 0; i < VGAWIDTH * VGAHEIGHT / 8; i++)
+    vga_buffer[i] = 0;
+}
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+#INT_TIMER2
+void isr(void) {
+  line++;
+  if(line > 522) {
+  // generate the VCSYNC pulse
+    output_low(VSYNCPIN);
+    if(line > 524) {
+      output_high(VSYNCPIN);
+      line = 0;
+      line_n = 0;
+      loc = vga_buffer;  // get vga_buffer array location in RAM
+    }
+    return;
+  }
+
+  if (line < STARTLINE)
+    return;
+
+  //if (line > ENDLINE - 1)  return;
+  #asm
+  #if (ENDLINE > 256)
+  MOVF   line+1, W
+  SUBLW  0x00
+  BC    jmp1
+  XORLW  0xFF
+  #else
+  MOVF   line+1, F
+  #endif
+  BNZ   skp
+  MOVF   line, W
+  SUBLW  ENDLINE-1
+  BC    jmp2
+  #endasm
+  skp: return;
+
+  jmp1:
+  #asm
+  nop
+  #endasm
+
+  jmp2:
+  FSR0 = loc;   // load FSR0 with data address
+
+  #asm
+  // Byte 1
+  MOVF   0xFEE, 0      // 0xFEE: POSTINC0 register
+  MOVWF  LATD     nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F
+  // Byte 2
+  MOVF   0xFEE, 0
+  MOVWF  LATD     nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F
+  // Byte 3
+  MOVF   0xFEE, 0
+  MOVWF  LATD     nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F
+  // Byte 4
+  MOVF   0xFEE, 0
+  MOVWF  LATD     nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F
+  // Byte 5
+  MOVF   0xFEE, 0
+  MOVWF  LATD     nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F
+  // Byte 6
+  MOVF   0xFEE, 0
+  MOVWF  LATD     nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F
+  // Byte 7
+  MOVF   0xFEE, 0
+  MOVWF  LATD     nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F
+  // Byte 8
+  MOVF   0xFEE, 0
+  MOVWF  LATD     nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F
+  // Byte 9
+  MOVF   0xFEE, 0
+  MOVWF  LATD     nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F
+  // Byte 10
+  MOVF   0xFEE, 0
+  MOVWF  LATD     nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F
+  // Byte 11
+  MOVF   0xFEE, 0
+  MOVWF  LATD     nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F
+  // Byte 12
+  MOVF   0xFEE, 0
+  MOVWF  LATD     nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F
+  // Byte 13
+  MOVF   0xFEE, 0
+  MOVWF  LATD     nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F
+  // Byte 14
+  MOVF   0xFEE, 0
+  MOVWF  LATD     nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F
+  // Byte 15
+  MOVF   0xFEE, 0
+  MOVWF  LATD     nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F
+  // Byte 16
+  MOVF   0xFEE, 0
+  MOVWF  LATD     nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F
+  // Byte 17
+  MOVF   0xFEE, 0
+  MOVWF  LATD     nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F
+  // Byte 18
+  MOVF   0xFEE, 0
+  MOVWF  LATD     nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F
+  // Byte 19
+  MOVF   0xFEE, 0
+  MOVWF  LATD     nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F
+  // Byte 20
+  MOVF   0xFEE, 0
+  MOVWF  LATD     nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  RLCF   LATD, F  nop
+  // return to black
+  CLRF   LATD
+  #endasm
+
+  line_n++;
+  if( line_n == PACKED_LINES ) {
+    loc = FSR0;
+    line_n = 0;
+  }
+
+}
