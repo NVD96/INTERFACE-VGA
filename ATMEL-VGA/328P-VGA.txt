@@ -1,0 +1,307 @@
+;
+; VGA_INTERFACE.asm
+;
+; Outputs the required signals with the correct timings for VGA output to a monitor.
+;
+;
+;
+; Created: 13/02/2018 
+; Author : Tom
+;
+
+
+
+
+
+
+
+
+
+; COMPILER SETTINGS
+.INCLUDE "M328pDEF.INC"
+
+
+; INTERRUPT VECTORS
+.org 0      ; defines absolute address for interrupt vector
+
+
+
+
+; ****************************************************************************************
+; **** IO PORT D SETUP
+; ****************************************************************************************
+
+    ; ddrd pin I/O direction configured
+
+    sbi ddrd,0  ; RED BIT 0             
+    sbi ddrd,1  ; RED BIT 1             
+    sbi ddrd,2  ; GRN BIT 0
+    sbi ddrd,3  ; GRN BIT 1
+    sbi ddrd,4  ; BLU BIT 0
+    sbi ddrd,5  ; BLU BIT 1
+    sbi ddrd,6  ; HORIZONTAL SYNC       
+    sbi ddrd,7  ; VERTICAL SYNC          
+
+
+
+    ldi r20, 0xC0
+    out portd, r20      ; clears the RGB bits and sets the sync pulses high
+
+
+
+
+
+; ****************************************************************************************
+; **** STARTUP SEQUENCE
+; ****************************************************************************************
+
+; INITIALIZE STACK POINTER
+
+    ldi r16,low(ramend)     ; loads the lower byte of top stack address into register 16 
+    out spl,r16             ; stack pointer lower byte is set to lower byte of the top 
+                            ; stack address stored in register 16
+
+    ldi r16,high(ramend)    ; loads the upper byte of top stack address into register 16
+    out sph,r16             ; stack pointer upper byte is set to upper byte of the top 
+                            ; stack address stored in register 16
+
+
+
+
+
+
+; main program loop
+main:
+
+
+
+V_LOOP:
+
+; ****************************************************************************************
+; **** VERTICAL LOOP - BEGIN
+; ****************************************************************************************
+
+
+; **** V-SYNC DRIVE LOW (2 lines, 1,270 cycles)
+
+
+
+
+    cbi portd,7     ;2 drives v-sync active low 
+
+
+; ========================================================================================
+    ; Delay 1268 cycles
+    ldi  r18, 2
+    ldi  r19, 165
+L1: dec  r19
+    brne L1
+    dec  r18
+    brne L1
+; ========================================================================================
+
+
+    sbi portd,7     ;2 drives v-sync high 
+
+
+
+
+
+
+
+
+
+; **** VERTICAL BACK PORCH (33 lines, 20955 cycles)
+
+    ; **NOTE: Only 20951 cycles required to be wasted as 4 cycles are used by Horizontal 
+    ; loop. 2 are used when setting max loop value in r16 and r17. A further 2 are used 
+    ; setting horizontal sync active low.
+
+
+; ========================================================================================
+    ; Delay 20951 cycles
+    ldi  r18, 28
+    ldi  r19, 52
+L2: dec  r19
+    brne L2
+    dec  r18
+    brne L2
+    rjmp PC+1
+; ========================================================================================
+
+
+
+
+
+
+
+
+
+; ****************************************************************************************
+; **** HORIZONTAL LOOP - BEGIN (LOOPS 480 times)
+; ****************************************************************************************
+
+
+    ldi r16,low(480)        ;1 holds LSB of loop value
+    ldi r17,high(480)       ;1 hold MSB of loop value
+
+
+
+
+H_LOOP:
+
+
+; **** H-SYNC DRIVE LOW (76 cycles)
+
+
+    cbi portd,6     ;2 drives h-sync active low 
+
+; ========================================================================================
+    ; Delay 74 cycles
+    ldi  r18, 24
+L3: dec  r18
+    brne L3
+    rjmp PC+1
+; ========================================================================================
+
+
+    sbi portd,6     ;2 drives h-sync high
+
+
+
+
+
+
+
+
+
+; **** HORIZONTAL BACK PORCH (38 cycles)
+
+
+    ; **NOTE: Only 36 cycles required to be wasted as 2 cycles are used by RGB for setting
+    ; the red bit 0 high.
+
+
+
+; ========================================================================================
+    ; Delay 36 cycles
+    ldi  r18, 12
+L4: dec  r18
+    brne L4
+; ========================================================================================
+
+
+
+
+
+
+
+
+
+; **** RGB (508 cycles)
+
+    ldi r20, 0xC1       ;1
+    out portd, r20      ;1 sets red bit 0 high, all other RGB low, sync pulses high 
+
+
+; ========================================================================================  
+    ; Delay 506 cycles
+    ldi  r18, 168
+L5: dec  r18
+    brne L5
+    rjmp PC+1
+; ========================================================================================
+
+
+    ldi r20, 0xC0       ;1
+    out portd, r20      ;1 sets the RGB outputs low, sync pulses high 
+
+
+
+
+
+
+
+
+
+; **** HORIZONTAL FRONT PORCH (13 cycles)
+
+
+    ; **NOTE: Only 5 cycles required to be wasted as 8 cycles are used up already. 4 are    
+    ; are used for subtracting one from the loop counter. A further 4 are used for 
+    ; jumping to start of horizontal loop and setting the Horizontal sync active low.
+
+
+; ========================================================================================
+    ; Delay 5 cycles
+    lpm
+    rjmp PC+1
+; ========================================================================================
+
+
+    ldi r18, low(1)     ;1
+    ldi r19, high(1)    ;1
+
+
+    sub r16,r18         ;1
+    sbc r17,r19         ;1  
+
+
+    brne H_LOOP     ; 2 cycles if true, 1 if false  
+
+
+
+
+
+
+
+
+
+; ****************************************************************************************
+; **** HORIZONTAL LOOP - END
+; ****************************************************************************************
+
+
+
+
+
+
+
+
+
+
+
+; **** VERTICAL FRONT PORCH (10 lines, 6350 cycles)
+
+    ; **NOTE: Only 10 cycles have been used up for the Horizontal front porch, as a result a  
+    ; further 3 must be added to the vertical front porch. 
+    ; However 4 cycles are already being used, 2 to jump to start of vertical loop and a 
+    ; further 2 to drive horizontal sync active low.
+    ; As a result taking these two factors into account, the delay needs to be 6350+3-4 =
+    ; 6349  cycles long.
+
+
+; ========================================================================================
+    ; Delay 6349 cycles
+    ldi  r18, 9
+    ldi  r19, 62
+L6: dec  r19
+    brne L6
+    dec  r18
+    brne L6
+; ========================================================================================
+
+
+    rjmp V_LOOP     ;2  relative jump to start of vertical loop
+
+
+
+
+
+
+
+
+
+; ****************************************************************************************
+; **** VERTICAL LOOP - END
+; ****************************************************************************************
